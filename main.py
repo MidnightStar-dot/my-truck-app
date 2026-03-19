@@ -7,267 +7,93 @@ from datetime import datetime
 import openpyxl
 import os
 
-# --- НОВЫЙ БЛОК ДЛЯ РАЗРЕШЕНИЙ ---
+# Оставляем только нужные импорты
 if platform == 'android':
     from android.permissions import request_permissions, Permission
-# ---------------------------------
+    from android.storage import primary_external_storage_path
 
 KV = '''
 MDScreen:
-    MDScrollView:
-        MDBoxLayout:
-            orientation: 'vertical'
-            padding: dp(20)
-            spacing: dp(10)
-            size_hint_y: None
-            height: self.minimum_height
+    MDBoxLayout:
+        orientation: 'vertical'
+        padding: dp(20)
+        spacing: dp(10)
 
-            MDLabel:
-                text: "TRUCK LOGBOOK"
-                halign: "center"
-                font_style: "H5"
-                bold: True
+        MDLabel:
+            text: "TRUCK LOGBOOK"
+            halign: "center"
+            font_style: "H5"
+            bold: True
 
-            MDBoxLayout:
-                orientation: 'horizontal'
-                spacing: dp(8)
-                size_hint_y: None
-                height: dp(56)
-                MDTextField:
-                    id: preplan
-                    hint_text: "Pre Plan #"
-                    mode: "fill"
-                MDIconButton:
-                    icon: "microphone"
-                    theme_icon_color: "Custom"
-                    icon_color: app.mic_color('preplan')
-                    on_release: app.start_voice('preplan')
+        MDTextField:
+            id: preplan
+            hint_text: "Pre Plan #"
+            mode: "fill"
 
-            MDBoxLayout:
-                orientation: 'horizontal'
-                spacing: dp(8)
-                size_hint_y: None
-                height: dp(56)
-                MDTextField:
-                    id: trailer
-                    hint_text: "Trailer #"
-                    mode: "fill"
-                MDIconButton:
-                    icon: "microphone"
-                    theme_icon_color: "Custom"
-                    icon_color: app.mic_color('trailer')
-                    on_release: app.start_voice('trailer')
+        MDTextField:
+            id: loaded_miles
+            hint_text: "Loaded Miles"
+            input_filter: "int"
+            mode: "fill"
 
-            MDBoxLayout:
-                orientation: 'horizontal'
-                spacing: dp(8)
-                size_hint_y: None
-                height: dp(56)
-                MDTextField:
-                    id: destination
-                    hint_text: "Destination"
-                    mode: "fill"
-                MDIconButton:
-                    icon: "microphone"
-                    theme_icon_color: "Custom"
-                    icon_color: app.mic_color('destination')
-                    on_release: app.start_voice('destination')
+        MDLabel:
+            id: status_label
+            text: "Status: Ready"
+            halign: "center"
+            theme_text_color: "Custom"
+            text_color: 1, 0.7, 0, 1
 
-            MDTextField:
-                id: loaded_miles
-                hint_text: "Loaded Miles"
-                mode: "fill"
-                input_filter: "int"
-
-            MDTextField:
-                id: empty_miles
-                hint_text: "Empty Miles"
-                mode: "fill"
-                input_filter: "int"
-
-            MDTextField:
-                id: adp
-                hint_text: "Additional Pay (ADP) $"
-                mode: "fill"
-                input_filter: "float"
-
-            MDLabel:
-                id: status_label
-                text: ""
-                halign: "center"
-                theme_text_color: "Custom"
-                text_color: 1, 0.7, 0, 1
-
-            MDRaisedButton:
-                text: "SAVE TO LOG"
-                md_bg_color: 1, 0.7, 0, 1
-                text_color: 0, 0, 0, 1
-                size_hint_x: 1
-                on_release: app.confirm_save()
+        MDRaisedButton:
+            text: "SAVE TO EXCEL"
+            size_hint_x: 1
+            on_release: app.save_to_excel()
 '''
 
 class TruckLogApp(MDApp):
-    active_field = None
-    dialog = None
-
     def build(self):
         self.theme_cls.theme_style = "Dark"
         self.theme_cls.primary_palette = "Orange"
         
-        # --- ЗАПРОС ПРАВ ПРИ ЗАПУСКЕ ---
         if platform == 'android':
             request_permissions([
-                Permission.READ_EXTERNAL_STORAGE,
                 Permission.WRITE_EXTERNAL_STORAGE,
-                Permission.MANAGE_EXTERNAL_STORAGE,
-                Permission.RECORD_AUDIO
+                Permission.READ_EXTERNAL_STORAGE,
+                Permission.MANAGE_EXTERNAL_STORAGE
             ])
-        # ------------------------------
-        
         return Builder.load_string(KV)
 
-    # (Твои методы вибрации и диалога остаются без изменений...)
-    def vibrate(self, duration=0.05):
-        if platform == 'android':
-            try:
-                from android.runnable import run_on_ui_thread
-                from jnius import autoclass
-                PythonActivity = autoclass('org.kivy.android.PythonActivity')
-                Context = autoclass('android.content.Context')
-                @run_on_ui_thread
-                def _vibrate():
-                    vibrator = PythonActivity.mActivity.getSystemService(Context.VIBRATOR_SERVICE)
-                    if vibrator and vibrator.hasVibrator():
-                        vibrator.vibrate(int(duration * 1000))
-                _vibrate()
-            except: pass
-
-    def confirm_save(self):
-        ids = self.root.ids
-        if not ids.loaded_miles.text and not ids.empty_miles.text:
-            self.set_status("⚠️ Enter Miles")
-            return
-        l_miles = float(ids.loaded_miles.text or 0)
-        e_miles = float(ids.empty_miles.text or 0)
-        summary = f"PrePlan: {ids.preplan.text}\nTotal: {l_miles + e_miles} mi"
-        
-        self.dialog = MDDialog(
-            title="Save?", text=summary,
-            buttons=[
-                MDFlatButton(text="CANCEL", on_release=lambda x: self.dialog.dismiss()),
-                MDRaisedButton(text="SAVE", on_release=lambda x: self.save_to_excel())
-            ]
-        )
-        self.dialog.open()
-
-    def mic_color(self, field_id):
-        return (1, 0.7, 0, 1) if self.active_field == field_id else (0.6, 0.6, 0.6, 1)
-
-    def set_status(self, text):
-        self.root.ids.status_label.text = text
-
-    def start_voice(self, field_id):
-        if platform == 'android':
-            self.active_field = field_id
-            self.set_status("🎤 Listening...")
-            self._android_speech(field_id)
-        else:
-            self.set_status("⚠️ Android only")
-
-    def _android_speech(self, field_id):
-        # Весь твой код RecognitionListener...
-        try:
-            from jnius import autoclass, PythonJavaClass, java_method
-            from android.runnable import run_on_ui_thread
-            Intent = autoclass('android.content.Intent')
-            RecognizerIntent = autoclass('android.speech.RecognizerIntent')
-            SpeechRecognizer = autoclass('android.speech.SpeechRecognizer')
-            PythonActivity = autoclass('org.kivy.android.PythonActivity')
-            app_ref = self
-
-            class RecognitionListener(PythonJavaClass):
-                __javainterfaces__ = ['android/speech/RecognitionListener']
-                __javacontext__ = 'app'
-                @java_method('([B)V')
-                def onBufferReceived(self, buffer): pass
-                @java_method('(I)V')
-                def onError(self, error):
-                    app_ref.active_field = None
-                    app_ref.set_status(f"❌ Error {error}")
-                @java_method('(Landroid/os/Bundle;)V')
-                def onResults(self, results):
-                    app_ref.active_field = None
-                    matches = results.getStringArrayList(RecognizerIntent.EXTRA_RESULTS)
-                    if matches and matches.size() > 0:
-                        text = matches.get(0)
-                        app_ref.root.ids[field_id].text = text
-                        app_ref.set_status(f"✅: {text}")
-                @java_method('(Landroid/os/Bundle;)V')
-                def onReadyForSpeech(self, params): pass
-                @java_method('(Landroid/os/Bundle;)V')
-                def onPartialResults(self, results): pass
-                @java_method('(ILandroid/os/Bundle;)V')
-                def onEvent(self, eventType, params): pass
-                @java_method('()V')
-                def onBeginningOfSpeech(self): pass
-                @java_method('()V')
-                def onEndOfSpeech(self): pass
-                @java_method('(FF)V')
-                def onRmsChanged(self, rmsdB, unused): pass
-
-            @run_on_ui_thread
-            def _start():
-                recognizer = SpeechRecognizer.createSpeechRecognizer(PythonActivity.mActivity)
-                recognizer.setRecognitionListener(RecognitionListener())
-                intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
-                recognizer.startListening(intent)
-            _start()
-        except Exception as e: self.set_status(f"Error: {e}")
-
-    def get_excel_path(self):
-        file_name = 'mileage.xlsx'
-        if platform == 'android':
-            from android.storage import primary_external_storage_path
-            path = os.path.join(primary_external_storage_path(), 'Documents')
-            if not os.path.exists(path):
-                os.makedirs(path, exist_ok=True)
-            return os.path.join(path, file_name)
-        return file_name
-
     def save_to_excel(self):
-        if self.dialog: self.dialog.dismiss()
-        target_path = self.get_excel_path()
+        file_name = 'mileage.xlsx'
+        
+        # Определяем путь
+        if platform == 'android':
+            path = os.path.join(primary_external_storage_path(), 'Documents')
+        else:
+            path = os.getcwd()
+
+        if not os.path.exists(path):
+            os.makedirs(path, exist_ok=True)
+            
+        target_path = os.path.join(path, file_name)
+
         try:
             if not os.path.exists(target_path):
                 wb = openpyxl.Workbook()
                 ws = wb.active
-                ws.append(["Date", "Pre Plan #", "Trailer #", "Destination", "Loaded", "Empty", "ADP", "Total Mi", "ADP $"])
+                ws.append(["Date", "PrePlan", "Miles"])
                 wb.save(target_path)
-            
+
             wb = openpyxl.load_workbook(target_path)
             ws = wb.active
-            l_miles = float(self.root.ids.loaded_miles.text or 0)
-            e_miles = float(self.root.ids.empty_miles.text or 0)
-            
             ws.append([
                 datetime.now().strftime("%m-%d-%y"),
                 self.root.ids.preplan.text,
-                self.root.ids.trailer.text,
-                self.root.ids.destination.text,
-                l_miles, e_miles,
-                float(self.root.ids.adp.text or 0),
-                l_miles + e_miles,
-                float(self.root.ids.adp.text or 0)
+                self.root.ids.loaded_miles.text
             ])
             wb.save(target_path)
-            for f in ['preplan','trailer','destination','loaded_miles','empty_miles','adp']:
-                self.root.ids[f].text = ""
-            self.set_status("✅ Saved to Documents!")
-            self.vibrate(0.1)
+            self.root.ids.status_label.text = f"✅ Saved to {path}"
         except Exception as e:
-            self.set_status(f"❌ Error: {e}")
+            self.root.ids.status_label.text = f"❌ Error: {str(e)[:30]}"
 
 if __name__ == '__main__':
     TruckLogApp().run()
