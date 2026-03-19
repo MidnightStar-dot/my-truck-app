@@ -10,7 +10,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential git python3-dev libffi-dev libssl-dev
+          sudo apt-get install -y build-essential git python3-dev libffi-dev libssl-dev openjdk-17-jdk
           pip install --upgrade pip
           pip install buildozer cython==0.29.33 kivy
 
@@ -19,24 +19,22 @@ jobs:
           # Заходим в папку с кодом
           [ -d my-truck-app ] && cd my-truck-app
           
-          # Удаляем старый конфиг, чтобы не мешался
+          # Удаляем старый конфиг
           rm -f buildozer.spec
           
           # Создаем новый чистый конфиг
           buildozer init
           
-          # Прописываем название приложения
+          # Принимаем ВСЕ лицензии Android SDK (это важно!)
+          mkdir -p ~/.android
+          touch ~/.android/repositories.cfg
+          yes | buildozer android sdk_run -- sdkmanager --licenses
+          
+          # Прописываем настройки приложения
           sed -i 's/package.name = myapp/package.name = truckapp/' buildozer.spec
           sed -i 's/title = My Application/title = Truck Log/' buildozer.spec
           
-          # Запускаем сборку
-          buildozer android debug
+          # Запускаем финальную сборку
+          buildozer -v android debug
         env:
           APP_ANDROID_ARCHS: "arm64-v8a"
-          ACCEPT_SDK_LICENSE: "y"
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: TruckApp-Binary
-          path: bin/*.apk
