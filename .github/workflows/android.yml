@@ -52,7 +52,7 @@ jobs:
           patch_spec package.domain "org.trucklog"
           patch_spec source.dir    "."
           patch_spec source.include_exts "py,png,jpg,kv,atlas,xlsx"
-          patch_spec requirements  "python3,kivy==2.3.0,kivymd,pillow,openpyxl"
+          patch_spec requirements  "python3,kivy==2.3.0,kivymd,pillow,openpyxl,et_xmlfile"
           patch_spec android.api   "34"
           patch_spec android.minapi "21"
           patch_spec android.ndk   "25b"
