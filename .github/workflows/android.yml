@@ -9,37 +9,42 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.10' # Чуть откатим версию для стабильности
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libffi-dev python3-dev
+          sudo apt-get install -y build-essential libffi-dev python3-dev libssl-dev
           pip install --upgrade pip
-          pip install buildozer cython==0.29.33
+          pip install "buildozer>=1.5.0" "cython<3.0"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
 
       - name: Build APK
         run: |
-          # 1. Инициализируем конфиг, если его нет
           if [ ! -f buildozer.spec ]; then buildozer init; fi
           
-          # 2. Указываем библиотеки (обязательно openpyxl для Excel)
+          # Настройка библиотек (openpyxl для Excel)
           sed -i 's/requirements = python3,kivy/requirements = python3,kivy==2.3.0,kivymd,pillow,openpyxl/' buildozer.spec
           
-          # 3. ДАЕМ ПРАВА НА ФАЙЛЫ (чтобы видел твой Excel в Documents)
+          # Настройка прав (важно для Android 11+)
           sed -i 's/#android.permissions =/android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE/' buildozer.spec
           
-          # 4. Настраиваем имя и чистим старые сборки
+          # Фикс для современной сборки
+          sed -i 's/#android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
           sed -i 's/package.name = myapp/package.name = trucklogapp/' buildozer.spec
-          sed -i 's/title = My Application/title = Truck Log/' buildozer.spec
           
-          # 5. Запуск сборки (это займет 15-20 минут)
-          yes | buildozer -v android debug
+          # Запуск сборки без "yes |", чтобы не ломать поток (Broken pipe)
+          buildozer -v android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
