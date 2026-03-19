@@ -45,6 +45,7 @@ jobs:
           }
           patch_spec title         "TruckLogApp"
           patch_spec package.name  "trucklogapp"
+          patch_spec package.domain "org.midnightstar"
           patch_spec requirements  "python3,kivy==2.3.0,kivymd,pillow,openpyxl"
           patch_spec android.api   "34"
           patch_spec android.ndk   "25b"
