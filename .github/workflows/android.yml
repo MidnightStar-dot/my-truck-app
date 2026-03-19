@@ -31,26 +31,24 @@ jobs:
 
       - name: Build APK
         run: |
+          # 1. Инициализация и жесткая правка конфига
           if [ ! -f buildozer.spec ]; then buildozer init; fi
           
-          # 1. ЖЕСТКОЕ ПРИНЯТИЕ ЛИЦЕНЗИЙ И УСТАНОВКА НУЖНОЙ ВЕРСИИ
+          # Удаляем стандартные строки и вставляем свои, чтобы он не лез в 37-rc2
+          sed -i 's/^requirements = .*/requirements = python3,kivy==2.3.0,kivymd,pillow,openpyxl/' buildozer.spec
+          sed -i 's/^# android.api = .*/android.api = 34/' buildozer.spec
+          sed -i 's/^# android.ndk = .*/android.ndk = 25b/' buildozer.spec
+          sed -i 's/^# android.build_tools_version = .*/android.build_tools_version = 34.0.0/' buildozer.spec
+          sed -i 's/^# android.accept_sdk_license = .*/android.accept_sdk_license = True/' buildozer.spec
+          sed -i 's/^android.permissions = .*/android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE/' buildozer.spec
+          sed -i 's/package.name = myapp/package.name = trucklogapp/' buildozer.spec
+
+          # 2. ПРИНУДИТЕЛЬНОЕ ПРИНЯТИЕ ЛИЦЕНЗИЙ
+          mkdir -p $HOME/.android
+          touch $HOME/.android/repositories.cfg
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-          # 2. ПРАВИМ SPECS: ЗАПРЕЩАЕМ АВТОМАТИКУ
-          sed -i 's/requirements = python3,kivy/requirements = python3,kivy==2.3.0,kivymd,pillow,openpyxl/' buildozer.spec
-          sed -i 's/#android.permissions =/android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE/' buildozer.spec
-          
-          # Указываем явно использовать 34 версию и ПРИНИМАТЬ лицензии
-          sed -i 's/android.api = 31/android.api = 34/' buildozer.spec
-          sed -i 's/#android.build_tools_version =/android.build_tools_version = 34.0.0/' buildozer.spec
-          sed -i 's/#android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
-          
-          # 3. ХАК ДЛЯ AIDL (создаем ссылку, чтобы билд его нашел)
-          mkdir -p .buildozer/android/platform/android-sdk/build-tools/
-          ln -s $ANDROID_HOME/build-tools/34.0.0 .buildozer/android/platform/android-sdk/build-tools/34.0.0 || true
-
-          # 4. ЗАПУСК
+          # 3. СБОРКА С ЛОГОМ (чтобы видеть детали, если упадет)
           buildozer -v android debug
 
       - name: Upload APK
