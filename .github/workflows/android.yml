@@ -9,15 +9,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4.2.2 # Обновили версию
+      - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5.3.0 # Обновили версию
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4.5.0 # Обновили версию
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -33,23 +33,21 @@ jobs:
         run: |
           if [ ! -f buildozer.spec ]; then buildozer init; fi
           
-          # 1. ФИКС ЛИЦЕНЗИЙ
-          mkdir -p $HOME/.android
-          touch $HOME/.android/repositories.cfg
+          # 1. ПРИНЯТИЕ ЛИЦЕНЗИЙ И УСТАНОВКА СТАБИЛЬНЫХ ИНСТРУМЕНТОВ
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" "platforms;android-34" "platform-tools"
           
-          # 2. Настройка библиотек и разрешений
+          # 2. НАСТРОЙКА REQUIREMENTS И PERMISSIONS
           sed -i 's/requirements = python3,kivy/requirements = python3,kivy==2.3.0,kivymd,pillow,openpyxl/' buildozer.spec
           sed -i 's/#android.permissions =/android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE/' buildozer.spec
           
-          # 3. ФИКС ВЕРСИЙ (Уходим от проблемной 37-rc2 к стабильной 34)
+          # 3. ФИКСАЦИЯ ВЕРСИЙ В SPECS (чтобы не прыгал на 37-rc2)
           sed -i 's/#android.api = 31/android.api = 34/' buildozer.spec
           sed -i 's/#android.build_tools_version =/android.build_tools_version = 34.0.0/' buildozer.spec
           sed -i 's/#android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
+          sed -i 's/package.name = myapp/package.name = trucklogapp/' buildozer.spec
           
-          # 4. ПРИНУДИТЕЛЬНОЕ ПРИНЯТИЕ ВСЕХ ЛИЦЕНЗИЙ
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          
-          # 5. Сборка
+          # 4. СБОРКА
           buildozer -v android debug
 
       - name: Upload APK
