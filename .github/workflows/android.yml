@@ -1,5 +1,4 @@
 name: Build Android APK
-
 on:
   push:
     branches: [ main ]
@@ -7,7 +6,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -22,37 +20,87 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libffi-dev python3-dev libssl-dev zip unzip
+          sudo apt-get install -y \
+            build-essential libffi-dev python3-dev libssl-dev \
+            zip unzip git autoconf libtool pkg-config \
+            libltdl-dev zlib1g-dev
           pip install --upgrade pip
           pip install "buildozer>=1.5.0" "cython<3.0"
 
-      - name: Build APK
+      - name: Initialise and patch buildozer.spec
         run: |
-          # 1. Инициализация и жесткая правка конфига
-          if [ ! -f buildozer.spec ]; then buildozer init; fi
-          
-          # Удаляем стандартные строки и вставляем свои, чтобы он не лез в 37-rc2
-          sed -i 's/^requirements = .*/requirements = python3,kivy==2.3.0,kivymd,pillow,openpyxl/' buildozer.spec
-          sed -i 's/^# android.api = .*/android.api = 34/' buildozer.spec
-          sed -i 's/^# android.ndk = .*/android.ndk = 25b/' buildozer.spec
-          sed -i 's/^# android.build_tools_version = .*/android.build_tools_version = 34.0.0/' buildozer.spec
-          sed -i 's/^# android.accept_sdk_license = .*/android.accept_sdk_license = True/' buildozer.spec
-          sed -i 's/^android.permissions = .*/android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE/' buildozer.spec
-          sed -i 's/package.name = myapp/package.name = trucklogapp/' buildozer.spec
+          [ -f buildozer.spec ] || buildozer init
 
-          # 2. ПРИНУДИТЕЛЬНОЕ ПРИНЯТИЕ ЛИЦЕНЗИЙ
-          mkdir -p $HOME/.android
-          touch $HOME/.android/repositories.cfg
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          # These keys are UNCOMMENTED by default after `buildozer init`,
+          # so we match the literal key name (no leading #).
+          # Use a helper so each patch is visible and fails loudly.
+          patch_spec() {
+            key="$1" val="$2"
+            if grep -qE "^${key}\s*=" buildozer.spec; then
+              sed -i "s|^${key}\s*=.*|${key} = ${val}|" buildozer.spec
+            else
+              # Key is still commented out — uncomment and set
+              sed -i "s|^#\s*${key}\s*=.*|${key} = ${val}|" buildozer.spec
+            fi
+          }
 
-          # 3. СБОРКА С ЛОГОМ (чтобы видеть детали, если упадет)
-          buildozer -v android debug
+          patch_spec title         "TruckLogApp"
+          patch_spec package.name  "trucklogapp"
+          patch_spec package.domain "org.trucklog"
+          patch_spec source.dir    "."
+          patch_spec source.include_exts "py,png,jpg,kv,atlas,xlsx"
+          patch_spec requirements  "python3,kivy==2.3.0,kivymd,pillow,openpyxl"
+          patch_spec android.api   "34"
+          patch_spec android.minapi "21"
+          patch_spec android.ndk   "25b"
+          patch_spec android.build_tools_version "34.0.0"
+          patch_spec android.accept_sdk_license  "True"
+          patch_spec android.permissions \
+            "WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE"
+          # Pin p4a to a known-good tag to avoid broken HEAD commits
+          patch_spec p4a.branch "master"
+
+          echo "=== Relevant spec lines ==="
+          grep -E "^(title|package\.|source\.|requirements|android\.|p4a\.)" buildozer.spec
+
+      - name: Accept Android SDK licenses
+        run: |
+          mkdir -p "$HOME/.android"
+          touch "$HOME/.android/repositories.cfg"
+
+          # sdkmanager location varies; try both common paths
+          SDK_MGR=""
+          for candidate in \
+              "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+              "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"; do
+            [ -x "$candidate" ] && SDK_MGR="$candidate" && break
+          done
+
+          if [ -n "$SDK_MGR" ]; then
+            yes | "$SDK_MGR" --licenses || true
+          else
+            echo "sdkmanager not found — buildozer will install SDK automatically"
+          fi
+
+      - name: Build APK
+        run: buildozer -v android debug 2>&1 | tee build.log
+
+      - name: Show tail of build log on failure
+        if: failure()
+        run: tail -n 100 build.log
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: truck-log-apk
           path: bin/*.apk
+
+      - name: Upload build log (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
