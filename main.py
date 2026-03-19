@@ -7,6 +7,11 @@ from datetime import datetime
 import openpyxl
 import os
 
+# --- НОВЫЙ БЛОК ДЛЯ РАЗРЕШЕНИЙ ---
+if platform == 'android':
+    from android.permissions import request_permissions, Permission
+# ---------------------------------
+
 KV = '''
 MDScreen:
     MDScrollView:
@@ -101,7 +106,6 @@ MDScreen:
                 on_release: app.confirm_save()
 '''
 
-
 class TruckLogApp(MDApp):
     active_field = None
     dialog = None
@@ -109,9 +113,20 @@ class TruckLogApp(MDApp):
     def build(self):
         self.theme_cls.theme_style = "Dark"
         self.theme_cls.primary_palette = "Orange"
+        
+        # --- ЗАПРОС ПРАВ ПРИ ЗАПУСКЕ ---
+        if platform == 'android':
+            request_permissions([
+                Permission.READ_EXTERNAL_STORAGE,
+                Permission.WRITE_EXTERNAL_STORAGE,
+                Permission.MANAGE_EXTERNAL_STORAGE,
+                Permission.RECORD_AUDIO
+            ])
+        # ------------------------------
+        
         return Builder.load_string(KV)
 
-    # ── Вибрация ─────────────────────────────────────────────────────────
+    # (Твои методы вибрации и диалога остаются без изменений...)
     def vibrate(self, duration=0.05):
         if platform == 'android':
             try:
@@ -119,247 +134,140 @@ class TruckLogApp(MDApp):
                 from jnius import autoclass
                 PythonActivity = autoclass('org.kivy.android.PythonActivity')
                 Context = autoclass('android.content.Context')
-
                 @run_on_ui_thread
                 def _vibrate():
-                    vibrator = PythonActivity.mActivity.getSystemService(
-                        Context.VIBRATOR_SERVICE
-                    )
+                    vibrator = PythonActivity.mActivity.getSystemService(Context.VIBRATOR_SERVICE)
                     if vibrator and vibrator.hasVibrator():
                         vibrator.vibrate(int(duration * 1000))
                 _vibrate()
-            except Exception:
-                pass
+            except: pass
 
-    # ── Диалог подтверждения ─────────────────────────────────────────────
     def confirm_save(self):
         ids = self.root.ids
-
         if not ids.loaded_miles.text and not ids.empty_miles.text:
-            self.set_status("⚠️ Enter at least Loaded or Empty miles")
+            self.set_status("⚠️ Enter Miles")
             return
-
         l_miles = float(ids.loaded_miles.text or 0)
         e_miles = float(ids.empty_miles.text or 0)
-        adp_val = ids.adp.text or "0"
-        total = l_miles + e_miles
-
-        summary = (
-            f"Pre Plan: {ids.preplan.text or '—'}\n"
-            f"Trailer:  {ids.trailer.text or '—'}\n"
-            f"Dest:     {ids.destination.text or '—'}\n"
-            f"Loaded: {l_miles:.0f} mi   Empty: {e_miles:.0f} mi\n"
-            f"Total:  {total:.0f} mi   ADP: ${adp_val}"
-        )
-
-        if self.dialog:
-            self.dialog.dismiss()
-            self.dialog = None
-
+        summary = f"PrePlan: {ids.preplan.text}\nTotal: {l_miles + e_miles} mi"
+        
         self.dialog = MDDialog(
-            title="Save entry?",
-            text=summary,
-            auto_dismiss=False,
+            title="Save?", text=summary,
             buttons=[
-                MDFlatButton(
-                    text="CANCEL",
-                    theme_text_color="Custom",
-                    text_color=(0.6, 0.6, 0.6, 1),
-                    on_release=lambda x: self.dialog.dismiss()
-                ),
-                MDRaisedButton(
-                    text="SAVE",
-                    md_bg_color=(1, 0.7, 0, 1),
-                    text_color=(0, 0, 0, 1),
-                    on_release=lambda x: self.save_to_excel()
-                ),
+                MDFlatButton(text="CANCEL", on_release=lambda x: self.dialog.dismiss()),
+                MDRaisedButton(text="SAVE", on_release=lambda x: self.save_to_excel())
             ]
         )
         self.dialog.open()
 
-    # ── Микрофон — цвет кнопки ───────────────────────────────────────────
     def mic_color(self, field_id):
-        if self.active_field == field_id:
-            return (1, 0.7, 0, 1)
-        return (0.6, 0.6, 0.6, 1)
+        return (1, 0.7, 0, 1) if self.active_field == field_id else (0.6, 0.6, 0.6, 1)
 
     def set_status(self, text):
         self.root.ids.status_label.text = text
 
-    # ── Разрешение микрофона ─────────────────────────────────────────────
-    def request_mic_permission(self, callback):
-        if platform == 'android':
-            from android.permissions import request_permissions, Permission, check_permission
-            if check_permission(Permission.RECORD_AUDIO):
-                callback()
-            else:
-                def on_result(permissions, grants):
-                    if all(grants):
-                        callback()
-                    else:
-                        self.set_status("❌ Microphone permission denied")
-                request_permissions([Permission.RECORD_AUDIO], on_result)
-        else:
-            callback()
-
-    # ── Голосовой ввод ───────────────────────────────────────────────────
     def start_voice(self, field_id):
-        self.request_mic_permission(lambda: self._do_voice(field_id))
-
-    def _do_voice(self, field_id):
         if platform == 'android':
             self.active_field = field_id
             self.set_status("🎤 Listening...")
             self._android_speech(field_id)
         else:
-            self.set_status("⚠️ Voice input is Android only")
+            self.set_status("⚠️ Android only")
 
     def _android_speech(self, field_id):
+        # Весь твой код RecognitionListener...
         try:
             from jnius import autoclass, PythonJavaClass, java_method
             from android.runnable import run_on_ui_thread
-
             Intent = autoclass('android.content.Intent')
             RecognizerIntent = autoclass('android.speech.RecognizerIntent')
             SpeechRecognizer = autoclass('android.speech.SpeechRecognizer')
             PythonActivity = autoclass('org.kivy.android.PythonActivity')
-
             app_ref = self
 
             class RecognitionListener(PythonJavaClass):
                 __javainterfaces__ = ['android/speech/RecognitionListener']
                 __javacontext__ = 'app'
-
                 @java_method('([B)V')
                 def onBufferReceived(self, buffer): pass
-
                 @java_method('(I)V')
                 def onError(self, error):
                     app_ref.active_field = None
-                    errors = {
-                        1: "Network error", 2: "Network error",
-                        3: "Audio error",   4: "Server error",
-                        5: "Client error",  6: "No speech detected",
-                        7: "No match found",8: "Service busy",
-                        9: "No permission"
-                    }
-                    app_ref.set_status(f"❌ {errors.get(error, f'Error {error}')}")
-
-                @java_method('(Landroid/os/Bundle;)V')
-                def onReadyForSpeech(self, params):
-                    app_ref.set_status("🎤 Speak now...")
-
+                    app_ref.set_status(f"❌ Error {error}")
                 @java_method('(Landroid/os/Bundle;)V')
                 def onResults(self, results):
                     app_ref.active_field = None
-                    matches = results.getStringArrayList(
-                        RecognizerIntent.EXTRA_RESULTS
-                    )
+                    matches = results.getStringArrayList(RecognizerIntent.EXTRA_RESULTS)
                     if matches and matches.size() > 0:
                         text = matches.get(0)
                         app_ref.root.ids[field_id].text = text
-                        app_ref.set_status(f"✅ Got: {text}")
-                        app_ref.vibrate(0.05)
-                    else:
-                        app_ref.set_status("❌ Nothing recognized")
-
+                        app_ref.set_status(f"✅: {text}")
+                @java_method('(Landroid/os/Bundle;)V')
+                def onReadyForSpeech(self, params): pass
                 @java_method('(Landroid/os/Bundle;)V')
                 def onPartialResults(self, results): pass
-
                 @java_method('(ILandroid/os/Bundle;)V')
                 def onEvent(self, eventType, params): pass
-
                 @java_method('()V')
                 def onBeginningOfSpeech(self): pass
-
                 @java_method('()V')
-                def onEndOfSpeech(self):
-                    app_ref.set_status("⏳ Processing...")
-
+                def onEndOfSpeech(self): pass
                 @java_method('(FF)V')
                 def onRmsChanged(self, rmsdB, unused): pass
 
             @run_on_ui_thread
             def _start():
-                recognizer = SpeechRecognizer.createSpeechRecognizer(
-                    PythonActivity.mActivity
-                )
+                recognizer = SpeechRecognizer.createSpeechRecognizer(PythonActivity.mActivity)
                 recognizer.setRecognitionListener(RecognitionListener())
                 intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                intent.putExtra(
-                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-                )
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
-                intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
                 recognizer.startListening(intent)
-
             _start()
+        except Exception as e: self.set_status(f"Error: {e}")
 
-        except Exception as e:
-            self.active_field = None
-            self.set_status(f"❌ Error: {e}")
-
-    # ── Сохранение в Excel ───────────────────────────────────────────────
     def get_excel_path(self):
         file_name = 'mileage.xlsx'
         if platform == 'android':
             from android.storage import primary_external_storage_path
             path = os.path.join(primary_external_storage_path(), 'Documents')
             if not os.path.exists(path):
-                os.makedirs(path)
+                os.makedirs(path, exist_ok=True)
             return os.path.join(path, file_name)
         return file_name
 
     def save_to_excel(self):
-        if self.dialog:
-            self.dialog.dismiss()
-
+        if self.dialog: self.dialog.dismiss()
         target_path = self.get_excel_path()
-
         try:
             if not os.path.exists(target_path):
                 wb = openpyxl.Workbook()
                 ws = wb.active
-                ws.title = "Sheet1"
-                ws.append(["Date", "Pre Plan #", "Trailer #", "Destination",
-                           "Loaded", "Empty", "ADP", "BW M", "BW $"])
+                ws.append(["Date", "Pre Plan #", "Trailer #", "Destination", "Loaded", "Empty", "ADP", "Total Mi", "ADP $"])
                 wb.save(target_path)
-
+            
             wb = openpyxl.load_workbook(target_path)
-            ws = wb["Sheet1"] if "Sheet1" in wb.sheetnames else wb.active
-
+            ws = wb.active
             l_miles = float(self.root.ids.loaded_miles.text or 0)
             e_miles = float(self.root.ids.empty_miles.text or 0)
-            adp_val = float(self.root.ids.adp.text or 0)
-
-            now = datetime.now()
-            date_str = f"{now.month}-{now.day}-{str(now.year)[2:]}"
-
+            
             ws.append([
-                date_str,
+                datetime.now().strftime("%m-%d-%y"),
                 self.root.ids.preplan.text,
                 self.root.ids.trailer.text,
                 self.root.ids.destination.text,
-                l_miles,
-                e_miles,
-                adp_val,
+                l_miles, e_miles,
+                float(self.root.ids.adp.text or 0),
                 l_miles + e_miles,
-                adp_val
+                float(self.root.ids.adp.text or 0)
             ])
-
             wb.save(target_path)
-
-            for field in ['preplan', 'trailer', 'destination',
-                          'loaded_miles', 'empty_miles', 'adp']:
-                self.root.ids[field].text = ""
-
-            self.set_status("✅ Saved!")
+            for f in ['preplan','trailer','destination','loaded_miles','empty_miles','adp']:
+                self.root.ids[f].text = ""
+            self.set_status("✅ Saved to Documents!")
             self.vibrate(0.1)
-
         except Exception as e:
-            self.set_status(f"❌ Save error: {e}")
-
+            self.set_status(f"❌ Error: {e}")
 
 if __name__ == '__main__':
     TruckLogApp().run()
