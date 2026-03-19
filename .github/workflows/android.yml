@@ -33,7 +33,7 @@ jobs:
         run: |
           if [ ! -f buildozer.spec ]; then buildozer init; fi
           
-          # 1. ФИКС ЛИЦЕНЗИЙ (Самое важное)
+          # 1. ФИКС ЛИЦЕНЗИЙ (Создаем нужные папки заранее)
           mkdir -p $HOME/.android
           touch $HOME/.android/repositories.cfg
           
@@ -41,12 +41,12 @@ jobs:
           sed -i 's/requirements = python3,kivy/requirements = python3,kivy==2.3.0,kivymd,pillow,openpyxl/' buildozer.spec
           sed -i 's/#android.permissions =/android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE/' buildozer.spec
           
-          # 3. ФИКС ВЕРСИЙ (чтобы не лез в 37-rc2)
+          # 3. ФИКС ВЕРСИЙ (Уходим от проблемной 37-rc2 к стабильной 34)
           sed -i 's/#android.api = 31/android.api = 34/' buildozer.spec
           sed -i 's/#android.build_tools_version =/android.build_tools_version = 34.0.0/' buildozer.spec
           sed -i 's/#android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
           
-          # 4. ПРИНУДИТЕЛЬНОЕ ПРИНЯТИЕ ЛИЦЕНЗИЙ ЧЕРЕЗ SDKMANAGER
+          # 4. ПРИНУДИТЕЛЬНОЕ ПРИНЯТИЕ ВСЕХ ЛИЦЕНЗИЙ
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
           
           # 5. Сборка
