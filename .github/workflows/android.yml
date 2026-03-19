@@ -1,30 +1,9 @@
-name: Android Build
-on: [push]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Dependencies
+- name: Build APK
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential git python3-dev libffi-dev libssl-dev
-          pip install --upgrade pip
-          pip install buildozer cython==0.29.33 kivy
-
-      - name: Build APK
-        run: |
-          # Если файла настроек нет, создаем его
-          if [ ! -f buildozer.spec ]; then buildozer init; fi
-          # Запуск сборки
-          yes | buildozer -v android debug
+          # Переходим в папку, если она создалась внутри
+          [ -d my-truck-app ] && cd my-truck-app
+          # Запускаем сборку без лишних вопросов
+          buildozer android debug
         env:
           APP_ANDROID_ARCHS: "arm64-v8a"
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: my-app-bundle
-          path: bin/*.apk
+          ACCEPT_SDK_LICENSE: "y"
