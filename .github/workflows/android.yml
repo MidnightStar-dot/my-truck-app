@@ -7,18 +7,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential git python3-dev libffi-dev libssl-dev
-          pip3 install --upgrade pip
-          pip3 install buildozer cython kivy
+          pip install --upgrade pip
+          pip install buildozer cython==0.29.33 kivy
 
-      - name: Build with Buildozer
+      - name: Build APK
         run: |
-          # Если файла нет, создаем стандартный (на всякий случай)
+          # Если файла настроек нет, создаем его
           if [ ! -f buildozer.spec ]; then buildozer init; fi
-          
           # Запуск сборки
           yes | buildozer -v android debug
         env:
@@ -27,5 +26,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: TruckLog-APK
+          name: my-app-bundle
           path: bin/*.apk
