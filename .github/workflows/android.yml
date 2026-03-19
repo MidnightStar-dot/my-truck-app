@@ -1,42 +1,48 @@
-name: Android Build
-on: [push]
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v2
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
+      - name: Set up Python
+        uses: actions/setup-python@v2
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          python-version: '3.11'
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential git python3-dev ffmpeg libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev zlib1g-dev
+          sudo apt-get install -y build-essential libffi-dev python3-dev
           pip install --upgrade pip
-          pip install buildozer cython==0.29.33 kivy
+          pip install buildozer cython==0.29.33
 
       - name: Build APK
         run: |
-          # Если файла настроек нет, создаем его
+          # 1. Инициализируем конфиг, если его нет
           if [ ! -f buildozer.spec ]; then buildozer init; fi
           
-          # Настраиваем имя и зависимости прямо в файле
-          sed -i 's/package.name = myapp/package.name = truckapp/' buildozer.spec
-          sed -i 's/title = My Application/title = Truck Log/' buildozer.spec
-          sed -i 's/requirements = python3,kivy/requirements = python3,kivy,pillow/' buildozer.spec
+          # 2. Указываем библиотеки (обязательно openpyxl для Excel)
+          sed -i 's/requirements = python3,kivy/requirements = python3,kivy==2.3.0,kivymd,pillow,openpyxl/' buildozer.spec
           
-          # Принимаем лицензии и собираем
+          # 3. ДАЕМ ПРАВА НА ФАЙЛЫ (чтобы видел твой Excel в Documents)
+          sed -i 's/#android.permissions =/android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE/' buildozer.spec
+          
+          # 4. Настраиваем имя и чистим старые сборки
+          sed -i 's/package.name = myapp/package.name = trucklogapp/' buildozer.spec
+          sed -i 's/title = My Application/title = Truck Log/' buildozer.spec
+          
+          # 5. Запуск сборки (это займет 15-20 минут)
           yes | buildozer -v android debug
-        env:
-          APP_ANDROID_ARCHS: "arm64-v8a"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Final-Truck-App
+          name: truck-log-apk
           path: bin/*.apk
