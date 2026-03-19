@@ -1,15 +1,31 @@
-- name: Build APK
+name: Android Build
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git python3-dev libffi-dev libssl-dev
+          pip install --upgrade pip
+          pip install buildozer cython==0.29.33 kivy
+
+      - name: Build APK
         run: |
           # Заходим в папку с кодом
           [ -d my-truck-app ] && cd my-truck-app
           
-          # Удаляем старый битый конфиг, если он есть
+          # Удаляем старый конфиг, чтобы не мешался
           rm -f buildozer.spec
           
           # Создаем новый чистый конфиг
           buildozer init
           
-          # Быстро правим конфиг: ставим имя приложения
+          # Прописываем название приложения
           sed -i 's/package.name = myapp/package.name = truckapp/' buildozer.spec
           sed -i 's/title = My Application/title = Truck Log/' buildozer.spec
           
@@ -18,3 +34,9 @@
         env:
           APP_ANDROID_ARCHS: "arm64-v8a"
           ACCEPT_SDK_LICENSE: "y"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TruckApp-Binary
+          path: bin/*.apk
